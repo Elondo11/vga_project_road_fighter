@@ -1,0 +1,104 @@
+// (c) Technion IIT, Department of Electrical Engineering 2023 
+//-- Alex Grinshpun Apr 2017
+//-- Dudy Nov 13 2017
+// SystemVerilog version Alex Grinshpun May 2018
+// coding convention dudy December 2018
+// updated Eyal Lev April 2023
+// updated to state machine Dudy March 2023 
+
+
+module	hartMove	(	
+ 
+					input	logic	clk,
+					input	logic	resetN,
+					input	logic	startOfFrame,  // short pulse every start of frame 30Hz 
+					input	logic	Y_updirection_key,		//move Y Up  
+					input	logic	Y_downdirection_key,		//move Y down		
+																					
+					output	 logic signed	[10:0]	topLeftY  // can be negative , if the object is partliy outside 
+					
+);
+
+parameter int INITIAL_Y = 2'd32;
+const int	FIXED_POINT_MULTIPLIER	=	64; // note it must be 2^n 
+// FIXED_POINT_MULTIPLIER is used to enable working with integers in high resolution so that 
+// we do all calculations with topLeftX_FixedPoint to get a resolution of 1/64 pixel in calcuatuions,
+// we devide at the end by FIXED_POINT_MULTIPLIER which must be 2^n, to return to the initial proportions
+
+
+// movement limits 
+const int   OBJECT_WIDTH_X = 512;
+const int   OBJECT_HIGHT_Y = 416;
+const int	SafetyMargin =	2;
+
+const int	y_FRAME_TOP		=	(SafetyMargin) * FIXED_POINT_MULTIPLIER;
+const int	y_FRAME_BOTTOM	=	(479 -SafetyMargin - OBJECT_HIGHT_Y ) * FIXED_POINT_MULTIPLIER; //- OBJECT_HIGHT_Y
+
+enum  logic 	  {IDLE_ST, // initial state
+						MOVE_ST // moving no colision  //check if inside the frame  
+					  }SM_PS, 
+						SM_NS ;
+   
+ int Yposition_PS, Yposition_NS ;  
+
+
+ 
+ always_ff @(posedge clk or negedge resetN)
+		begin : fsm_sync_proc
+			if (resetN == 1'b0) begin 
+				SM_PS <= IDLE_ST ;   ; 
+				Yposition_PS <= 0   ; 	
+			
+			end 	
+			else begin 
+				SM_PS  <= SM_NS ;
+				Yposition_PS <=  Yposition_NS    ; 
+			end ; 
+		end // end fsm_sync
+
+ 
+ ///-----------------
+ 
+ 
+always_comb 
+begin
+	// set default values 
+		 SM_NS = SM_PS  ;
+		 Yposition_NS  = Yposition_PS  ; 
+	 	
+
+	case(SM_PS)
+//------------
+		IDLE_ST: begin
+//------------
+		 Yposition_NS = INITIAL_Y; 
+
+		 if (startOfFrame) 
+				SM_NS = MOVE_ST ;
+ 	
+	end
+	
+//------------
+		MOVE_ST:  begin     // moving no colision 
+//------------
+		
+		
+			if(Y_updirection_key && (Yposition_PS > SafetyMargin) && startOfFrame)//  while moving up
+				 Yposition_NS = Yposition_PS - 1'b1; 
+				 
+			else if(Y_downdirection_key && (Yposition_PS < (479 -SafetyMargin - OBJECT_HIGHT_Y )) && startOfFrame)//  while moving down
+				 Yposition_NS = Yposition_PS + 1'b1; 
+						
+		end
+		
+endcase  // case 
+end		
+//return from FIXED point  trunc back to prame size parameters 
+  
+assign 	topLeftY = Yposition_PS ;    
+
+	
+
+endmodule	
+//---------------
+ 
